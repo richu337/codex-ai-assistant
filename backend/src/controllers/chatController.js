@@ -12,15 +12,20 @@ class ChatController {
 
       // Get or create conversation
       if (conversationId) {
-        const { data } = await supabaseAdmin
+        const { data, error } = await supabaseAdmin
           .from('conversations')
           .select('*')
           .eq('id', conversationId)
           .eq('user_id', userId)
           .single();
+        
+        if (error) {
+          logger.error('Error fetching conversation:', error);
+          throw new Error('Conversation not found');
+        }
         conversation = data;
       } else {
-        const { data } = await supabaseAdmin
+        const { data, error } = await supabaseAdmin
           .from('conversations')
           .insert({
             user_id: userId,
@@ -28,23 +33,38 @@ class ChatController {
           })
           .select()
           .single();
+        
+        if (error) {
+          logger.error('Error creating conversation:', error);
+          throw error;
+        }
         conversation = data;
       }
 
       // Save user message
-      await supabaseAdmin.from('messages').insert({
+      const { error: messageError } = await supabaseAdmin.from('messages').insert({
         conversation_id: conversation.id,
         role: 'user',
         content: message
       });
 
-      // Get conversation history
-      const { data: history } = await supabaseAdmin
+      if (messageError) {
+        logger.error('Error saving user message:', messageError);
+        throw messageError;
+      }
+
+      // Get conversation history (last 20 messages)
+      const { data: history, error: historyError } = await supabaseAdmin
         .from('messages')
         .select('role, content')
         .eq('conversation_id', conversation.id)
         .order('created_at', { ascending: true })
         .limit(20);
+
+      if (historyError) {
+        logger.error('Error fetching history:', historyError);
+        throw historyError;
+      }
 
       // Get user preferences for personalization
       const { data: preferences } = await supabaseAdmin
@@ -57,7 +77,9 @@ class ChatController {
       const systemMessage = {
         role: 'system',
         content: `You are Codex, a helpful and intelligent personal AI assistant. You remember previous conversations and learn user preferences. ${
-          preferences?.interests ? `The user is interested in: ${preferences.interests.join(', ')}.` : ''
+          preferences?.interests && preferences.interests.length > 0 
+            ? `The user is interested in: ${preferences.interests.join(', ')}.` 
+            : ''
         } Be conversational, friendly, and helpful.`
       };
 
@@ -72,11 +94,16 @@ class ChatController {
       const aiResponse = completion.choices[0].message.content;
 
       // Save AI response
-      await supabaseAdmin.from('messages').insert({
+      const { error: aiMessageError } = await supabaseAdmin.from('messages').insert({
         conversation_id: conversation.id,
         role: 'assistant',
         content: aiResponse
       });
+
+      if (aiMessageError) {
+        logger.error('Error saving AI message:', aiMessageError);
+        throw aiMessageError;
+      }
 
       // Update conversation timestamp
       await supabaseAdmin
@@ -91,7 +118,10 @@ class ChatController {
       });
     } catch (error) {
       logger.error('Chat error:', error);
-      res.status(500).json({ error: 'Failed to process message' });
+      res.status(500).json({ 
+        error: 'Failed to process message',
+        details: error.message 
+      });
     }
   }
 
@@ -105,11 +135,11 @@ class ChatController {
         .select('id, title, created_at, updated_at')
         .eq('user_id', userId)
         .order('updated_at', { ascending: false })
-        .range(offset, offset + limit - 1);
+        .range(offset, offset + parseInt(limit) - 1);
 
       if (error) throw error;
 
-      res.json({ conversations: data });
+      res.json({ conversations: data || [] });
     } catch (error) {
       logger.error('Get conversations error:', error);
       res.status(500).json({ error: 'Failed to fetch conversations' });
@@ -181,11 +211,11 @@ class ChatController {
         .select('*')
         .eq('conversation_id', id)
         .order('created_at', { ascending: true })
-        .range(offset, offset + limit - 1);
+        .range(offset, offset + parseInt(limit) - 1);
 
       if (error) throw error;
 
-      res.json({ messages: data });
+      res.json({ messages: data || [] });
     } catch (error) {
       logger.error('Get messages error:', error);
       res.status(500).json({ error: 'Failed to fetch messages' });
