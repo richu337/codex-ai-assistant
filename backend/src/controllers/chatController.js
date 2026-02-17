@@ -1,5 +1,5 @@
 const { supabaseAdmin } = require('../config/supabase');
-const { openai, DEFAULT_MODEL } = require('../config/openai');
+const { llm, DEFAULT_MODEL } = require('../config/llm');
 const logger = require('../utils/logger');
 
 class ChatController {
@@ -83,8 +83,10 @@ class ChatController {
         } Be conversational, friendly, and helpful.`
       };
 
-      // Call OpenAI
-      const completion = await openai.chat.completions.create({
+      // Call LLM (OpenAI or OpenRouter)
+      logger.info(`Using model: ${DEFAULT_MODEL}`);
+      
+      const completion = await llm.chat.completions.create({
         model: DEFAULT_MODEL,
         messages: [systemMessage, ...history],
         temperature: 0.7,
