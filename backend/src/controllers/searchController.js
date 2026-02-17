@@ -1,6 +1,5 @@
 const { supabaseAdmin } = require('../config/supabase');
-const { openai, DEFAULT_MODEL } = require('../config/openai');
-const axios = require('axios');
+const { llm, DEFAULT_MODEL } = require('../config/llm');
 const logger = require('../utils/logger');
 
 class SearchController {
@@ -9,8 +8,8 @@ class SearchController {
       const { q: query } = req.query;
       const userId = req.user.id;
 
-      // Use OpenAI to enhance and answer the search query
-      const completion = await openai.chat.completions.create({
+      // Use LLM to enhance and answer the search query
+      const completion = await llm.chat.completions.create({
         model: DEFAULT_MODEL,
         messages: [
           {
@@ -56,7 +55,7 @@ class SearchController {
         .select('*')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
-        .range(offset, offset + limit - 1);
+        .range(offset, offset + parseInt(limit) - 1);
 
       if (error) throw error;
 
