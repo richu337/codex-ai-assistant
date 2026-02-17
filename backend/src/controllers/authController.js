@@ -18,12 +18,34 @@ class AuthController {
 
       if (error) throw error;
 
-      // Create user preferences
-      await supabaseAdmin.from('user_preferences').insert({
-        user_id: data.user.id,
-        interests: [],
-        settings: {}
-      });
+      // Create user profile if user was created
+      if (data.user) {
+        // Insert user profile
+        const { error: profileError } = await supabaseAdmin
+          .from('users')
+          .insert({
+            id: data.user.id,
+            name: name,
+            avatar_url: null
+          });
+
+        if (profileError && profileError.code !== '23505') { // Ignore duplicate key errors
+          logger.error('Error creating user profile:', profileError);
+        }
+
+        // Create user preferences
+        const { error: preferencesError } = await supabaseAdmin
+          .from('user_preferences')
+          .insert({
+            user_id: data.user.id,
+            interests: [],
+            settings: {}
+          });
+
+        if (preferencesError && preferencesError.code !== '23505') { // Ignore duplicate key errors
+          logger.error('Error creating user preferences:', preferencesError);
+        }
+      }
 
       res.status(201).json({
         user: data.user,
@@ -45,6 +67,39 @@ class AuthController {
       });
 
       if (error) throw error;
+
+      // Ensure user profile exists
+      if (data.user) {
+        const { data: existingProfile } = await supabaseAdmin
+          .from('users')
+          .select('id')
+          .eq('id', data.user.id)
+          .single();
+
+        if (!existingProfile) {
+          // Create profile if it doesn't exist
+          await supabaseAdmin.from('users').insert({
+            id: data.user.id,
+            name: data.user.user_metadata?.name || data.user.email?.split('@')[0],
+            avatar_url: null
+          });
+        }
+
+        // Ensure preferences exist
+        const { data: existingPreferences } = await supabaseAdmin
+          .from('user_preferences')
+          .select('id')
+          .eq('user_id', data.user.id)
+          .single();
+
+        if (!existingPreferences) {
+          await supabaseAdmin.from('user_preferences').insert({
+            user_id: data.user.id,
+            interests: [],
+            settings: {}
+          });
+        }
+      }
 
       res.json({
         user: data.user,
